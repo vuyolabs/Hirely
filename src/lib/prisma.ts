@@ -16,9 +16,23 @@ const globalForPrisma = globalThis as unknown as {
     prismaClass?: typeof PrismaClient;
 };
 
+/*
+ * Every serverless instance gets its own pool, and Supabase's pooler caps
+ * total clients, so keep each instance's pool small (override via
+ * DATABASE_POOL_MAX).
+ */
+const poolMax = parseInt(
+    process.env.DATABASE_POOL_MAX ?? (process.env.NODE_ENV === "production" ? "2" : "5"),
+    10
+);
+
 function createClient() {
     return new PrismaClient({
-        adapter: new PrismaPg({ connectionString }),
+        adapter: new PrismaPg({
+            connectionString,
+            max: poolMax,
+            idleTimeoutMillis: 10_000,
+        }),
     });
 }
 
