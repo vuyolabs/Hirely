@@ -1,0 +1,324 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CANDIDATE
+  RECRUITER
+  ADMIN
+}
+
+enum JobStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+}
+
+enum ExperienceLevel {
+  ENTRY
+  MID
+  SENIOR
+  LEAD
+}
+
+enum WorkMode {
+  ONSITE
+  HYBRID
+  REMOTE
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SCREENING
+  SHORTLISTED
+  INTERVIEW
+  HIRED
+  REJECTED
+}
+
+enum ResumeStatus {
+  UPLOADED
+  PROCESSING
+  PARSED
+  FAILED
+  ARCHIVED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  PUBLISH
+  CLOSE
+  STATUS_CHANGE
+  LOGIN
+  DISABLE
+}
+
+enum CompanyType {
+  PRIVATE_LIMITED
+  PUBLIC_LIMITED
+  OPC
+  LLP
+  PARTNERSHIP
+  PROPRIETORSHIP
+  GOVERNMENT
+  NGO
+}
+
+enum CompanyVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum HiringFor {
+  OWN_COMPANY
+  CLIENTS
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  password_hash String
+  role          UserRole @default(CANDIDATE)
+  is_active     Boolean  @default(true)
+
+  candidateProfile CandidateProfile?
+  recruiterProfile RecruiterProfile?
+
+  auditLogs                  AuditLog[]
+  applicationStatusHistories ApplicationStatusHistory[]
+  created_at                 DateTime                   @default(now())
+  updated_at                 DateTime                   @updatedAt
+}
+
+model CandidateProfile {
+  id     String @id @default(cuid())
+  user   User   @relation(fields: [userId], references: [id])
+  userId String @unique
+
+  first_name String
+  last_name  String
+  phone      String?
+  location   String?
+  headline   String?
+  summary    String?
+
+  skills      Json?
+  education   Json?
+  experience  Json?
+  projects    Json?
+  preferences Json?
+
+  onboarding_completed Boolean @default(false)
+
+  resumes      Resume[]
+  applications Application[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model Resume {
+  id String @id @default(cuid())
+
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id])
+  candidateId String
+
+  object_key String
+  file_name  String
+  file_type  String
+  file_size  Int
+
+  status ResumeStatus @default(UPLOADED)
+
+  parsed_data Json?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  applications Application[]
+}
+
+model RecruiterProfile {
+  id     String @id @default(cuid())
+  user   User   @relation(fields: [userId], references: [id])
+  userId String @unique
+
+  first_name   String
+  last_name    String
+  company_name String?
+  job_title    String?
+
+  phone         String?
+  department    String?
+  linkedin_url  String?
+  hiring_for    HiringFor @default(OWN_COMPANY)
+  hiring_volume String?
+
+  company   Company? @relation(fields: [companyId], references: [id])
+  companyId String?
+
+  onboarding_completed Boolean @default(false)
+
+  jobs Job[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+/// A legally registered employer. Several recruiters can belong to one company;
+/// the GSTIN identifies it, and an admin verifies it before it's trusted.
+model Company {
+  id String @id @default(cuid())
+
+  legal_name   String
+  display_name String
+  company_type CompanyType
+  industry     String
+  company_size String
+  founded_year Int?
+  website      String?
+  description  String?
+
+  gstin               String  @unique
+  pan                 String
+  /// CIN for companies, LLPIN for LLPs.
+  registration_number String?
+
+  address_line String
+  city         String
+  state        String
+  pincode      String
+
+  verification_status CompanyVerificationStatus @default(PENDING)
+  verification_note   String?
+  verified_at         DateTime?
+
+  recruiters RecruiterProfile[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model Job {
+  id          String           @id @default(cuid())
+  recruiter   RecruiterProfile @relation(fields: [recruiterId], references: [id])
+  recruiterId String
+
+  title       String
+  description String
+  /// Display string derived from work_mode + locations, e.g. "Bengaluru, Pune · Hybrid".
+  location    String?
+  /// Functional area, e.g. "Engineering - Software & QA".
+  department  String?
+
+  employment_type  EmploymentType
+  experience_level ExperienceLevel
+  work_mode        WorkMode        @default(ONSITE)
+  /// City names (string[]). Empty for fully remote roles.
+  locations        Json?
+  openings         Int             @default(1)
+
+  min_experience Int  @default(0)
+  max_experience Int?
+
+  /// Annual CTC in lakhs (LPA).
+  salary_min       Float?
+  salary_max       Float?
+  salary_disclosed Boolean @default(true)
+
+  career_profile      Json?
+  skills              Json?
+  nice_to_have_skills Json?
+  education           String?
+  benefits            Json?
+
+  resume_required      Boolean   @default(true)
+  application_deadline DateTime?
+
+  status JobStatus @default(DRAFT)
+
+  applications Application[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model Application {
+  id String @id @default(cuid())
+
+  job   Job    @relation(fields: [jobId], references: [id])
+  jobId String
+
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id])
+  candidateId String
+
+  resume   Resume? @relation(fields: [resumeId], references: [id])
+  resumeId String?
+
+  status       ApplicationStatus @default(APPLIED)
+  cover_letter String?
+
+  statusHistory ApplicationStatusHistory[]
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([jobId, candidateId])
+}
+
+model ApplicationStatusHistory {
+  id String @id @default(cuid())
+
+  application   Application @relation(fields: [applicationId], references: [id])
+  applicationId String
+
+  from_status ApplicationStatus?
+  to_status   ApplicationStatus
+
+  changed_by  User   @relation(fields: [changedById], references: [id])
+  changedById String
+
+  created_at DateTime @default(now())
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  action        AuditAction
+  resource_type String
+  resource_id   String?
+  metadata      Json?
+
+  created_at DateTime @default(now())
+}
+
+/// One-time password reset code. Only an HMAC of the code is stored, and the
+/// token is burned after too many wrong guesses.
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  email     String
+  code_hash String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
